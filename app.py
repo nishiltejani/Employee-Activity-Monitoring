@@ -33,6 +33,7 @@ class VideoPlayer(QMainWindow):
         self.customer_counter = 0
         self.customer_times = {}
         self.employee_times = {}
+        self.area_time = {"Waiting area": {}, "Service area": {}}
         self.frame_rate = 30
 
         self.waiting_area = [(950, 0), (1600, 550)]
@@ -101,7 +102,8 @@ class VideoPlayer(QMainWindow):
             self.timer.stop()
             self.cap.release()
             print("Video processing finished.")
-            self.write_oncall_csv() 
+            self.write_oncall_csv()  # Write on-call status
+            self.write_area_csv()    # Write area time details
             return
 
         results = self.model(frame, verbose=False, classes=[0])
@@ -143,6 +145,14 @@ class VideoPlayer(QMainWindow):
                     if obj_id not in self.employee_times:
                         self.employee_times[obj_id] = int(time.time())  # Record the start time for employees
 
+                # Track time spent in each area
+                if obj_id not in self.area_time[area]:
+                    self.area_time[area][obj_id] = {"start": time.time(), "total": 0}
+                else:
+                    self.area_time[area][obj_id]["total"] += time.time() - self.area_time[area][obj_id]["start"]
+                    self.area_time[area][obj_id]["start"] = time.time()
+
+                # Update on-call and no-call times
                 if obj_id not in updated_id_storage:
                     start_time = self.id_storage[obj_id]["time"][0] if obj_id in self.id_storage else int(time.time())
                     updated_id_storage[obj_id] = {
@@ -169,6 +179,7 @@ class VideoPlayer(QMainWindow):
                         # Track no-call time
                         updated_id_storage[obj_id]["nocall_time"] += int(time.time()) - updated_id_storage[obj_id]["time"][1]
 
+                # Draw bounding box and log data
                 self.draw_bounding_box(frame, x1, y1, x2, y2, person_type, obj_id, area)
                 self.write_csv(person_type, obj_id, x_center, y_center, area)
 
@@ -180,15 +191,27 @@ class VideoPlayer(QMainWindow):
         delay = max(int(1000 / self.frame_rate) - int(elapsed_time * 1000), 1)
         self.timer.start(delay)
 
+
     def write_oncall_csv(self):
-        with open("oncall_status.csv", "a") as file:
-            # Only write the total on-call time for employees, not customers
+        with open("oncall_status.csv", "w") as file:
+            file.write("ObjectID,Label,FormattedOnCallTime\n")
             for obj_id, data in self.id_storage.items():
                 if data["label"] == "employee":
                     oncall_time = data["oncall_time"]
                     minutes, seconds = divmod(oncall_time, 60)
                     formatted_oncall_time = f"{minutes:02}:{seconds:02}"
-                    file.write(f"Employee, {obj_id}, {formatted_oncall_time}\n")
+                    file.write(f"{obj_id},{data['label']},{formatted_oncall_time}\n")
+
+    def write_area_csv(self):
+        """Write the total time spent in each area to a CSV file."""
+        with open("area_details.csv", "w") as file:
+            file.write("PersonType,ObjectID,Area,TotalTime\n")
+            for area, data in self.area_time.items():
+                for obj_id, time_data in data.items():
+                    total_time = int(time_data["total"])
+                    minutes, seconds = divmod(total_time, 60)
+                    formatted_time = f"{minutes:02}:{seconds:02}"
+                    file.write(f"{'employee' if obj_id < self.employee_counter else 'customer'},{obj_id},{area},{formatted_time}\n")
 
     def match_or_assign_id(self, x_center, y_center, label, threshold=50):
         min_distance = float('inf')
