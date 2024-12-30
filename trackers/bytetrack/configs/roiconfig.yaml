@@ -1,0 +1,13 @@
+Boundaries:
+  bottomLeft_cam:
+    860
+    100
+  bottomRight_cam:
+    860
+    620
+  topLeft_cam:
+    100
+    100
+  topRight_cam:
+    100
+    620

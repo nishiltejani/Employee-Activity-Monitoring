@@ -1,0 +1,5 @@
+train: ./person-data/train/images
+val: ./abstracted-tracker/Eval/valid/val
+
+nc: 1
+names: ['person']
