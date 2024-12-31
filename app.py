@@ -249,12 +249,14 @@ class VideoPlayer(QMainWindow):
                             "status": "inactive",  # Initially inactive
                             "inactive_duration": 0,
                             "active_duration": 0,
+                            "last_logged_time": 0,  # New attribute to track last logged time
                         }
 
                     current_center = data["coords"][-1]
                     last_position = self.employee_activity[obj_id]["last_position"]
                     last_activity_time = self.employee_activity[obj_id]["last_activity_time"]
                     status = self.employee_activity[obj_id]["status"]
+                    last_logged_time = self.employee_activity[obj_id]["last_logged_time"]
 
                     # Calculate distance from last position
                     dist = distance.euclidean(current_center, last_position)
@@ -298,23 +300,140 @@ class VideoPlayer(QMainWindow):
                         self.employee_activity[obj_id]["inactive_duration"] += time_elapsed
                         self.employee_activity[obj_id]["active_duration"] = 0  # Reset active time
 
-                    # Log the active/inactive time at each check interval
+                    # Log the active/inactive time only if the status has changed
                     if time_elapsed >= activity_check_interval:  # Log every 'activity_check_interval' seconds
-                        if self.employee_activity[obj_id]["status"] == "active":
-                            total_time = self.employee_activity[obj_id]["active_duration"]
-                        else:
-                            total_time = self.employee_activity[obj_id]["inactive_duration"]
+                        if self.employee_activity[obj_id]["status"] != status or time.time() - last_logged_time >= activity_check_interval:
+                            if self.employee_activity[obj_id]["status"] == "active":
+                                total_time = self.employee_activity[obj_id]["active_duration"]
+                            else:
+                                total_time = self.employee_activity[obj_id]["inactive_duration"]
 
-                        minutes = int(total_time // 60)
-                        seconds = int(total_time % 60)
-                        time_formatted = f"{minutes:02d}:{seconds:02d}"
+                            minutes = int(total_time // 60)
+                            seconds = int(total_time % 60)
+                            time_formatted = f"{minutes:02d}:{seconds:02d}"
 
-                        # Log the status and total time
-                        writer.writerow([obj_id, self.employee_activity[obj_id]["status"], time_formatted])
+                            # Log the status and total time
+                            writer.writerow([obj_id, self.employee_activity[obj_id]["status"], time_formatted])
+
+                            # Update last logged time to prevent duplicate entries
+                            self.employee_activity[obj_id]["last_logged_time"] = time.time()
 
                     # Update last position for the next check
                     self.employee_activity[obj_id]["last_position"] = current_center
                     self.employee_activity[obj_id]["last_activity_time"] = time.time()
+
+
+    # def log_employee_activity(
+    #     self,
+    #     inactivity_threshold=100,
+    #     activity_check_interval=5,
+    #     conversation_threshold=50,
+    #     conversation_time=10
+    # ):
+    #     """
+    #     Analyze and log active/inactive time of employees.
+        
+    #     Args:
+    #         inactivity_threshold: Minimum movement (in pixels) to consider an employee as active.
+    #         activity_check_interval: Interval (in seconds) for checking activity.
+    #         conversation_threshold: Proximity distance (in pixels) to consider employees close.
+    #         conversation_time: Time (in seconds) for which close employees are marked inactive.
+    #     """
+    #     # Initialize or update the employee activity tracker
+    #     if not hasattr(self, 'employee_activity'):
+    #         self.employee_activity = {}
+
+    #     # Open the CSV file for appending data
+    #     csv_file = "employee_activity.csv"
+    #     file_exists = os.path.isfile(csv_file)
+
+    #     with open(csv_file, mode="a", newline="") as file:
+    #         writer = csv.writer(file)
+            
+    #         if not file_exists:
+    #             # Write the header if the file does not exist
+    #             writer.writerow(["object_id", "status", "total_time"])
+
+    #         # Track proximity timestamps
+    #         proximity_timestamps = {}
+
+    #         # Iterate through each employee in the ID storage
+    #         for obj_id, data in self.id_storage.items():
+    #             if data["label"] == "employee":
+    #                 # Initialize employee activity tracking
+    #                 if obj_id not in self.employee_activity:
+    #                     self.employee_activity[obj_id] = {
+    #                         "last_position": data["coords"][-1],
+    #                         "last_activity_time": time.time(),
+    #                         "status": "inactive",  # Initially inactive
+    #                         "inactive_duration": 0,
+    #                         "active_duration": 0,
+    #                     }
+
+    #                 current_center = data["coords"][-1]
+    #                 last_position = self.employee_activity[obj_id]["last_position"]
+    #                 last_activity_time = self.employee_activity[obj_id]["last_activity_time"]
+    #                 status = self.employee_activity[obj_id]["status"]
+
+    #                 # Calculate distance from last position
+    #                 dist = distance.euclidean(current_center, last_position)
+
+    #                 # Calculate elapsed time since last activity check
+    #                 time_elapsed = time.time() - last_activity_time
+
+    #                 # Track proximity between employees
+    #                 for other_id, other_data in self.id_storage.items():
+    #                     if other_id != obj_id and other_data["label"] == "employee":
+    #                         other_center = other_data["coords"][-1]
+    #                         proximity = distance.euclidean(current_center, other_center)
+
+    #                         if proximity <= conversation_threshold:
+    #                             if (obj_id, other_id) not in proximity_timestamps:
+    #                                 proximity_timestamps[(obj_id, other_id)] = time.time()
+    #                             elif time.time() - proximity_timestamps[(obj_id, other_id)] > conversation_time:
+    #                                 # Mark both employees as inactive due to conversation
+    #                                 self.employee_activity[obj_id]["status"] = "inactive"
+    #                                 self.employee_activity[other_id]["status"] = "inactive"
+    #                                 self.employee_activity[obj_id]["last_activity_time"] = time.time()
+    #                                 self.employee_activity[other_id]["last_activity_time"] = time.time()
+    #                         else:
+    #                             if (obj_id, other_id) in proximity_timestamps:
+    #                                 del proximity_timestamps[(obj_id, other_id)]
+
+    #                 # Update active/inactive status
+    #                 if dist > inactivity_threshold:  # Movement detected (active)
+    #                     if status != "active":
+    #                         self.employee_activity[obj_id]["status"] = "active"
+    #                         self.employee_activity[obj_id]["last_activity_time"] = time.time()
+
+    #                     self.employee_activity[obj_id]["active_duration"] += time_elapsed
+    #                     self.employee_activity[obj_id]["inactive_duration"] = 0  # Reset inactive time
+
+    #                 else:  # No significant movement (inactive)
+    #                     if status != "inactive":
+    #                         self.employee_activity[obj_id]["status"] = "inactive"
+    #                         self.employee_activity[obj_id]["last_activity_time"] = time.time()
+
+    #                     self.employee_activity[obj_id]["inactive_duration"] += time_elapsed
+    #                     self.employee_activity[obj_id]["active_duration"] = 0  # Reset active time
+
+    #                 # Log the active/inactive time at each check interval
+    #                 if time_elapsed >= activity_check_interval:  # Log every 'activity_check_interval' seconds
+    #                     if self.employee_activity[obj_id]["status"] == "active":
+    #                         total_time = self.employee_activity[obj_id]["active_duration"]
+    #                     else:
+    #                         total_time = self.employee_activity[obj_id]["inactive_duration"]
+
+    #                     minutes = int(total_time // 60)
+    #                     seconds = int(total_time % 60)
+    #                     time_formatted = f"{minutes:02d}:{seconds:02d}"
+
+    #                     # Log the status and total time
+    #                     writer.writerow([obj_id, self.employee_activity[obj_id]["status"], time_formatted])
+
+    #                 # Update last position for the next check
+    #                 self.employee_activity[obj_id]["last_position"] = current_center
+    #                 self.employee_activity[obj_id]["last_activity_time"] = time.time()
 
     def check_talking_employees(self, frame, employee_centers, talking_threshold=100):
         """Check if employees are close enough to be considered talking."""
@@ -426,10 +545,19 @@ class VideoPlayer(QMainWindow):
         text_y = max(y1 - 10, text_height + 5)
         cv2.putText(frame, text, (text_x, text_y), font, font_scale, color, thickness, lineType=cv2.LINE_AA)
 
+
     def write_csv(self, label, obj_id, x_center, y_center, area):
-        with open(self.csv_file, "a") as file:
+        # Check if the file exists and is empty
+        file_exists = os.path.isfile(self.csv_file)
+
+        # If the file is either non-existent or empty, write the header
+        with open(self.csv_file, "a", newline="") as file:
+            if not file_exists or os.stat(self.csv_file).st_size == 0:
+                file.write("ObjectID,Label,Timestamp,x_center,y_center,area\n")
+            
+            # Append the data for each frame
             timestamp = int(time.time())
-            file.write(f"{label},{obj_id},{timestamp},{x_center},{y_center},{area}\n")
+            file.write(f"{obj_id},{label},{timestamp},{x_center},{y_center},{area}\n")
 
     def calculate_center(self, x1, y1, x2, y2):
         x_center = (x1 + x2) // 2
